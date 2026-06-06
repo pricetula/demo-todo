@@ -164,6 +164,26 @@ export async function getTasksByDate(dateStr: string): Promise<Task[]> {
   return tasks;
 }
 
+/**
+ * Fetches ALL tasks from the store, sorted chronologically by
+ * `scheduled_date` then `start_time`. Past tasks are included so the
+ * timeline can scroll up to review them; the viewport starts at today.
+ */
+export async function getAllTasks(): Promise<Task[]> {
+  const tasks = await withStore<Task[]>('readonly', (store) => {
+    return store.getAll();
+  });
+
+  // Sort by date then time ascending
+  tasks.sort((a, b) => {
+    const dateCmp = a.scheduled_date.localeCompare(b.scheduled_date);
+    if (dateCmp !== 0) return dateCmp;
+    return a.start_time.localeCompare(b.start_time);
+  });
+
+  return tasks;
+}
+
 // ─── Utility ───────────────────────────────────────────────────────────────
 
 /**
