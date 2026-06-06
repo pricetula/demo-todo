@@ -92,11 +92,13 @@ function renderTimelineView({
   tasks,
   onUpdateStatus = vi.fn(),
   onTogglePriority = vi.fn(),
+  onDeleteTask = vi.fn(),
   onAddTask = vi.fn(),
 }: {
   tasks: Task[];
   onUpdateStatus?: (taskId: string, newStatus: TaskStatus) => void;
   onTogglePriority?: (taskId: string, newPriority: TaskPriority) => void;
+  onDeleteTask?: (taskId: string) => void;
   onAddTask?: () => void;
 }) {
   return render(
@@ -104,6 +106,7 @@ function renderTimelineView({
       tasks={tasks}
       onUpdateStatus={onUpdateStatus}
       onTogglePriority={onTogglePriority}
+      onDeleteTask={onDeleteTask}
       onAddTask={onAddTask}
     />,
   );
@@ -350,7 +353,82 @@ describe("Scenario 2 — State Mutation Toggle", () => {
 });
 
 //  ────────────────────────────────────────────────────────────────────────────
-//  Scenario 3: Priority Accent Visuals
+//  Scenario 3: Delete Task
+//  ────────────────────────────────────────────────────────────────────────────
+//    Given a task card on the timeline
+//    When the user clicks the trash / delete action button
+//    Then the component fires onDeleteTask with the task's ID
+//    And the task is removed from the timeline after mutation.
+//  ────────────────────────────────────────────────────────────────────────────
+
+describe("Scenario 3 — Delete Task", () => {
+  it("renders a delete button with accessible aria-label on each task card", () => {
+    const tasks = [
+      makeTask({ id: "t1", title: "Meeting notes", start_time: "10:00" }),
+      makeTask({ id: "t2", title: "Code review", start_time: "11:00" }),
+    ];
+
+    renderTimelineView({ tasks });
+
+    // Each card should have a delete button with aria-label including the task title
+    const deleteBtn1 = screen.getByRole("button", { name: /delete meeting notes/i });
+    const deleteBtn2 = screen.getByRole("button", { name: /delete code review/i });
+
+    expect(deleteBtn1).toBeInTheDocument();
+    expect(deleteBtn2).toBeInTheDocument();
+  });
+
+  it("fires onDeleteTask with the task ID when the delete button is clicked", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const onDeleteTask = vi.fn();
+
+    const tasks = [
+      makeTask({ id: "task-to-delete", title: "Old draft", start_time: "09:00" }),
+    ];
+
+    renderTimelineView({ tasks, onDeleteTask });
+
+    await user.click(screen.getByRole("button", { name: /delete old draft/i }));
+
+    expect(onDeleteTask).toHaveBeenCalledTimes(1);
+    expect(onDeleteTask).toHaveBeenCalledWith("task-to-delete");
+  });
+
+  it("delete button is visibly styled as a destructive action on hover", () => {
+    const tasks = [
+      makeTask({ id: "t1", title: "Task A", start_time: "10:00" }),
+    ];
+
+    renderTimelineView({ tasks });
+
+    const deleteBtn = screen.getByRole("button", { name: /delete task a/i });
+
+    // The button should have hover:bg-destructive/10 and hover:text-destructive classes
+    expect(deleteBtn.className).toMatch(/hover:bg-destructive/);
+    expect(deleteBtn.className).toMatch(/hover:text-destructive/);
+  });
+
+  it("delete button does not trigger onUpdateStatus when clicked", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const onUpdateStatus = vi.fn();
+    const onDeleteTask = vi.fn();
+
+    const tasks = [
+      makeTask({ id: "t1", title: "Task to delete", start_time: "10:00" }),
+    ];
+
+    renderTimelineView({ tasks, onUpdateStatus, onDeleteTask });
+
+    await user.click(screen.getByRole("button", { name: /delete task to delete/i }));
+
+    // Only delete was called, not status update
+    expect(onDeleteTask).toHaveBeenCalledTimes(1);
+    expect(onUpdateStatus).not.toHaveBeenCalled();
+  });
+});
+
+//  ────────────────────────────────────────────────────────────────────────────
+//  Scenario 4: Priority Accent Visuals
 //  ────────────────────────────────────────────────────────────────────────────
 //    Given a task with a priority set to "high"
 //    Then its timeline card container must include specialized styling classes
@@ -358,7 +436,7 @@ describe("Scenario 2 — State Mutation Toggle", () => {
 //      "low" priority tasks.
 //  ────────────────────────────────────────────────────────────────────────────
 
-describe("Scenario 3 — Priority Accent Visuals", () => {
+describe("Scenario 4 — Priority Accent Visuals", () => {
   it("applies 'border-l-2 border-l-amber-400' to high-priority cards", () => {
     const tasks = [
       makeTask({ id: "high-1", title: "Urgent item", priority: "high", start_time: "09:00" }),
@@ -451,7 +529,7 @@ describe("Scenario 3 — Priority Accent Visuals", () => {
 });
 
 //  ────────────────────────────────────────────────────────────────────────────
-//  Scenario 4: Empty State Rendering
+//  Scenario 5: Empty State Rendering
 //  ────────────────────────────────────────────────────────────────────────────
 //    Given an empty array of tasks for a selected day
 //    When the timeline component renders
@@ -499,7 +577,7 @@ describe("Scenario 4 — Empty State Rendering", () => {
 
   it("does NOT render a CTA button when onAddTask is not provided", () => {
     // Render without onAddTask — the button should not appear
-    render(<TimelineView tasks={[]} onUpdateStatus={vi.fn()} onTogglePriority={vi.fn()} />);
+    render(<TimelineView tasks={[]} onUpdateStatus={vi.fn()} onTogglePriority={vi.fn()} onDeleteTask={vi.fn()} />);
 
     expect(screen.queryByRole("button", { name: /add your first task/i })).toBeNull();
   });
@@ -896,14 +974,15 @@ describe("Edge Cases — Accessibility & ARIA", () => {
 
     renderTimelineView({ tasks });
 
-    // Each action button should have a unique aria-label
-    const doneBtn = screen.getByRole("button", { name: /mark as done/i });
-    const skipBtn = screen.getByRole("button", { name: /mark as skipped/i });
-    const reopenBtn = screen.getByRole("button", { name: /mark as unfinished/i });
+    // All three status-action buttons appear on every card (current status is disabled).
+    // Verify at least one of each type exists across all task cards.
+    const doneBtns = screen.getAllByRole("button", { name: /mark as done/i });
+    const skipBtns = screen.getAllByRole("button", { name: /mark as skipped/i });
+    const reopenBtns = screen.getAllByRole("button", { name: /mark as unfinished/i });
 
-    expect(doneBtn).toBeInTheDocument();
-    expect(skipBtn).toBeInTheDocument();
-    expect(reopenBtn).toBeInTheDocument();
+    expect(doneBtns.length).toBeGreaterThanOrEqual(1);
+    expect(skipBtns.length).toBeGreaterThanOrEqual(1);
+    expect(reopenBtns.length).toBeGreaterThanOrEqual(1);
   });
 
   it("priority toggle buttons have distinct accessible labels", () => {

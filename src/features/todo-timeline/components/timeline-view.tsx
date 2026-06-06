@@ -35,11 +35,12 @@ function formatTimeDisplay(time: string): string {
   return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
-function getNextStatus(current: TaskStatus): TaskStatus {
-  if (current === "unfinished") return "done";
-  if (current === "done") return "skipped";
-  return "unfinished";
-}
+/** All possible status transitions a user can trigger directly. */
+const STATUS_ACTIONS: { status: TaskStatus; label: string }[] = [
+  { status: "done", label: "Done" },
+  { status: "skipped", label: "Skip" },
+  { status: "unfinished", label: "Reopen" },
+];
 
 function StatusIcon({ status }: { status: TaskStatus }) {
   if (status === "done") {
@@ -71,6 +72,7 @@ const STICKY_TOP = "top-0";
 
 interface TimelineViewProps {
   tasks: Task[];
+  onDeleteTask: (taskId: string) => void;
   onUpdateStatus: (taskId: string, newStatus: TaskStatus) => void;
   onTogglePriority: (taskId: string, newPriority: TaskPriority) => void;
   onAddTask?: () => void;
@@ -81,6 +83,7 @@ export function TimelineView({
   tasks,
   onUpdateStatus,
   onTogglePriority,
+  onDeleteTask,
   onAddTask,
   className,
 }: TimelineViewProps) {
@@ -230,7 +233,7 @@ export function TimelineView({
       >
         {activeDateLabel}
       </span>
-      
+
       <div
         ref={containerRef}
         className={cn("h-[400px] overflow-y-auto", className)}
@@ -337,7 +340,7 @@ export function TimelineView({
                     {/* Card */}
                     <div
                       className={cn(
-                        "relative min-w-0 rounded-lg border bg-card p-3.5 text-card-foreground shadow-xs transition-all duration-200",
+                        "relative rounded-lg border bg-card p-3.5 text-card-foreground shadow-xs transition-all duration-200",
                         isStickyActive && [
                           "border-primary/40 shadow-sm shadow-primary/5",
                           "ring-1 ring-primary/10",
@@ -371,7 +374,7 @@ export function TimelineView({
                           }
                           className={cn(
                             "shrink-0 rounded p-0.5 transition-colors",
-                            "hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
                           )}
                           aria-label={task.priority === "high" ? "Lower priority" : "Mark as high priority"}
                           title={task.priority === "high" ? "Lower priority" : "Mark as high priority"}
@@ -413,8 +416,8 @@ export function TimelineView({
                         </p>
                       )}
 
-                      {/* Bottom bar */}
-                      <div className="mt-2.5 flex items-center justify-between gap-2">
+                      {/* Bottom bar with always-visible action buttons */}
+                      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
                         {/* Status badge */}
                         <span
                           className={cn(
@@ -434,41 +437,73 @@ export function TimelineView({
                           {task.status === "unfinished" ? "Pending" : task.status}
                         </span>
 
-                      </div>
+                        {/* Action buttons — always visible, no hover required */}
+                        <div className="flex items-center gap-0.5">
+                          {STATUS_ACTIONS.map((action) => {
+                            const isCurrent = action.status === task.status;
+                            return (
+                              <Button
+                                key={action.status}
+                                variant="ghost"
+                                size="xs"
+                                disabled={isCurrent}
+                                onClick={() => onUpdateStatus(task.id, action.status)}
+                                aria-label={`Mark as ${action.status}`}
+                                className={cn(
+                                  "gap-1 px-1.5 text-[10px] font-medium",
+                                  isCurrent
+                                    ? "text-muted-foreground/30 cursor-not-allowed"
+                                    : "text-muted-foreground hover:text-foreground",
+                                )}
+                              >
+                                {action.status === "done" && (
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="20 6 9 17 4 12" />
+                                  </svg>
+                                )}
+                                {action.status === "skipped" && (
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="18" y1="6" x2="6" y2="18" />
+                                    <line x1="6" y1="6" x2="18" y2="18" />
+                                  </svg>
+                                )}
+                                {action.status === "unfinished" && (
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <circle cx="12" cy="12" r="10" />
+                                  </svg>
+                                )}
+                                {action.label}
+                              </Button>
+                            );
+                          })}
 
-                      {/* Hover-reveal action bar */}
-                      <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-0.5 rounded-b-lg bg-gradient-to-t from-card via-card/90 to-transparent px-3.5 pb-2.5 pt-6 opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100">
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          onClick={() =>
-                            onUpdateStatus(task.id, getNextStatus(task.status))
-                          }
-                          aria-label={`Mark as ${getNextStatus(task.status)}`}
-                          className="gap-1 px-1.5 text-[10px] font-medium text-muted-foreground hover:text-foreground"
-                        >
-                          {getNextStatus(task.status) === "done" && (
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="20 6 9 17 4 12" />
+                          {/* Delete button */}
+                          <button
+                            type="button"
+                            onClick={() => onDeleteTask(task.id)}
+                            className="ml-1 shrink-0 rounded p-1 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                            aria-label={`Delete ${task.title}`}
+                            title="Delete task"
+                          >
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="M3 6h18" />
+                              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                              <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                              <line x1="10" y1="11" x2="10" y2="17" />
+                              <line x1="14" y1="11" x2="14" y2="17" />
                             </svg>
-                          )}
-                          {getNextStatus(task.status) === "skipped" && (
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <line x1="18" y1="6" x2="6" y2="18" />
-                              <line x1="6" y1="6" x2="18" y2="18" />
-                            </svg>
-                          )}
-                          {getNextStatus(task.status) === "unfinished" && (
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <circle cx="12" cy="12" r="10" />
-                            </svg>
-                          )}
-                          {getNextStatus(task.status) === "done"
-                            ? "Done"
-                            : getNextStatus(task.status) === "skipped"
-                              ? "Skip"
-                              : "Reopen"}
-                        </Button>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>

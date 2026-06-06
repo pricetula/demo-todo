@@ -8,6 +8,7 @@ import {
   useCreateTask,
   useUpdateTaskStatus,
   useUpdateTaskPriority,
+  useDeleteTask,
 } from "@/features/todo-timeline/hooks/use-tasks";
 import { type TaskStatus, type TaskPriority } from "@/features/todo-timeline/types";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ export function TimelineContainer() {
   const createTask = useCreateTask();
   const updateStatus = useUpdateTaskStatus();
   const updatePriority = useUpdateTaskPriority();
+  const deleteTask = useDeleteTask();
 
   // ── Handlers ───────────────────────────────────────────────────────
   function handleCreateTask(payload: {
@@ -130,6 +132,7 @@ export function TimelineContainer() {
           tasks={tasks}
           onUpdateStatus={handleUpdateStatus}
           onTogglePriority={handleTogglePriority}
+          onDeleteTask={(taskId) => deleteTask.mutate(taskId)}
           onAddTask={() => setDialogOpen(true)}
         />
       )}
