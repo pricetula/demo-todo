@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { type Task, type TaskStatus, type TaskPriority } from "@/features/todo-timeline/types";
 import { Button } from "@/components/ui/button";
@@ -91,6 +92,8 @@ export function TimelineView({
   const [stickyActiveId, setStickyActiveId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
+    if (!containerRef.current) return;
+
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -101,9 +104,10 @@ export function TimelineView({
         }
       },
       {
-        // The observer triggers when the node marker area (top of each entry)
-        // enters the sticky zone at the top of the viewport.
-        rootMargin: "-80px 0px -70% 0px",
+        // Observe scroll within the timeline container, not the viewport.
+        root: containerRef.current,
+        // Triggers when the top edge of a task row enters the sticky zone.
+        rootMargin: "-52px 0px -75% 0px",
         threshold: 0,
       },
     );
@@ -114,6 +118,7 @@ export function TimelineView({
   }, [tasks]);
 
   // ── Find the "today boundary" — first task with scheduled_date >= today ─
+  // Used to auto-scroll on mount and as the initial date label fallback.
   const todayBoundaryIndex = React.useMemo(() => {
     const today = todayStr();
     for (let i = 0; i < tasks.length; i++) {
@@ -143,6 +148,34 @@ export function TimelineView({
     if (el) taskRefs.current.set(id, el);
     else taskRefs.current.delete(id);
   }
+
+  // ── Derive the sticky date label from the active / boundary task ──
+  const activeDateLabel = React.useMemo<string | null>(() => {
+    if (tasks.length === 0) return null;
+
+    let referenceTask: Task | undefined;
+
+    if (stickyActiveId) {
+      referenceTask = tasks.find((t) => t.id === stickyActiveId);
+    }
+
+    if (!referenceTask && todayBoundaryIndex < tasks.length) {
+      referenceTask = tasks[todayBoundaryIndex];
+    }
+
+    if (!referenceTask) {
+      referenceTask = tasks[0];
+    }
+
+    const date = referenceTask.scheduled_date;
+    const today = todayStr();
+
+    if (date === today) return "Today";
+
+    const [y, m, d] = date.split("-").map(Number);
+    const parsed = new Date(y, m - 1, d);
+    return format(parsed, "MMMM d, yyyy");
+  }, [tasks, stickyActiveId, todayBoundaryIndex]);
 
   // ── Empty state ────────────────────────────────────────────────────
   if (tasks.length === 0) {
@@ -189,295 +222,282 @@ export function TimelineView({
 
   // ── Render timeline with sticky-node layout ────────────────────────
   return (
-    <div
-      ref={containerRef}
-      className={cn("h-[400px] overflow-y-auto", className)}
-      data-component="timeline-view"
-    >
-      <div className="space-y-0">
-        {tasks.map((task, index) => {
-          const isStickyActive = task.id === stickyActiveId;
-          const isPast =
-            task.status === "done" ||
-            task.status === "skipped" ||
-            (task.status === "unfinished" &&
-              timeToMinutes(task.start_time) < timeToMinutes(nowHHmm()));
-          const isBoundary = index === todayBoundaryIndex;
+    <div>
+      {/* date label */}
+      <span
+        className="text-sm mb-8 block"
+        data-testid="timeline-date-header"
+      >
+        {activeDateLabel}
+      </span>
+      
+      <div
+        ref={containerRef}
+        className={cn("h-[400px] overflow-y-auto", className)}
+        data-component="timeline-view"
+      >
+        <div className="space-y-0">
+          {tasks.map((task, index) => {
+            const isStickyActive = task.id === stickyActiveId;
+            const isPast =
+              task.status === "done" ||
+              task.status === "skipped" ||
+              (task.status === "unfinished" &&
+                timeToMinutes(task.start_time) < timeToMinutes(nowHHmm()));
 
-          return (
-            <React.Fragment key={task.id}>
-            {/* ── "Today" dashed divider that appears before the boundary ── */}
-            {isBoundary && (
-              <div className="relative flex justify-end gap-2" aria-hidden="true">
-                <div className="self-start pb-4 max-md:hidden">
-                  <div className="flex w-14 flex-col items-end" />
-                </div>
-                <div className="flex flex-col items-center">
-                  <div className="flex size-6 items-center justify-center">
-                    <div className="size-2 rounded-full border-2 border-dashed border-primary/40 bg-background" />
-                  </div>
-                  <div className="-mt-2.5 w-px flex-1 border-l-2 border-dashed border-primary/30" />
-                </div>
-                <div className="flex flex-1 flex-col pb-6 pl-2 md:pl-4">
-                  <div className="flex items-center gap-2">
-                    <span className="h-px flex-1 bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-                    <span className="shrink-0 text-[10px] font-medium tracking-wider text-primary/50 uppercase select-none">
-                      Today
-                    </span>
-                    <span className="h-px flex-1 bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-                  </div>
-                </div>
-              </div>
-            )}
+            return (
+              <React.Fragment key={task.id}>
 
-            <div
-              ref={(el) => setTaskRef(task.id, el)}
-              data-task-id={task.id}
-              className="relative flex justify-end gap-2"
-            >
-              {/* ── LEFT COLUMN: Sticky time label (hidden on mobile) ── */}
-              <div
-                className={cn(
-                  "sticky self-start pb-4 max-md:hidden",
-                  STICKY_TOP,
-                )}
-                style={{ zIndex: 1 }}
-              >
-                <div className="flex w-14 flex-col items-end">
-                  <time
-                    dateTime={task.start_time}
-                    className={cn(
-                      "block text-xs font-medium tabular-nums tracking-tight",
-                      isStickyActive
-                        ? "text-foreground"
-                        : isPast
-                          ? "text-muted-foreground/50"
-                          : "text-muted-foreground",
-                    )}
-                  >
-                    {formatTimeDisplay(task.start_time)}
-                  </time>
-                </div>
-              </div>
 
-              {/* ── MIDDLE COLUMN: Sticky node + connecting line ────── */}
-              <div className="flex flex-col items-center">
-                {/* Sticky node dot */}
                 <div
-                  className={cn(
-                    "sticky flex size-6 items-center justify-center",
-                    STICKY_TOP,
-                  )}
-                  style={{ zIndex: 2 }}
+                  ref={(el) => setTaskRef(task.id, el)}
+                  data-task-id={task.id}
+                  className="relative flex justify-end gap-2"
                 >
-                  <span
+                  {/* ── LEFT COLUMN: Sticky time label (hidden on mobile) ── */}
+                  <div
                     className={cn(
-                      "flex size-[14px] shrink-0 items-center justify-center rounded-full border-2 transition-all duration-300",
-                      task.status === "done"
-                        ? "border-emerald-500 bg-emerald-100 dark:bg-emerald-900/30"
-                        : task.status === "skipped"
-                          ? "border-muted-foreground/40 bg-muted"
-                          : isStickyActive
-                            ? "border-primary bg-primary shadow-[0_0_0_5px_rgba(59,130,246,0.15)] ring-[3px] ring-primary/20"
-                            : isPast
-                              ? "border-muted-foreground/30 bg-background"
-                              : "border-muted-foreground/50 bg-background",
+                      "sticky self-start pb-4 max-md:hidden",
+                      STICKY_TOP,
                     )}
-                    aria-hidden="true"
+                    style={{ zIndex: 1 }}
                   >
-                    {task.status === "done" && (
-                      <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    )}
-                    {task.status === "unfinished" && isStickyActive && (
-                      <span className="size-[6px] rounded-full bg-primary-foreground" />
-                    )}
-                  </span>
-                </div>
-
-                {/* Vertical connector line */}
-                <div className="-mt-2.5 w-px flex-1 border-l border-border/60" />
-              </div>
-
-              {/* ── RIGHT COLUMN: Task card ──────────────────────────── */}
-              <div className="flex flex-1 flex-col gap-3 pb-8 pl-2 md:pl-4">
-                {/* Mobile-only time label */}
-                <div className="flex items-center gap-2 md:hidden">
-                  <time
-                    dateTime={task.start_time}
-                    className={cn(
-                      "text-xs font-medium tabular-nums tracking-tight",
-                      isPast ? "text-muted-foreground/50" : "text-muted-foreground",
-                    )}
-                  >
-                    {formatTimeDisplay(task.start_time)}
-                  </time>
-                </div>
-
-                {/* Card */}
-                <div
-                  className={cn(
-                    "relative min-w-0 rounded-lg border bg-card p-3.5 text-card-foreground shadow-xs transition-all duration-200",
-                    isStickyActive && [
-                      "border-primary/40 shadow-sm shadow-primary/5",
-                      "ring-1 ring-primary/10",
-                    ],
-                    task.priority === "high" && "border-l-2 border-l-amber-400",
-                    task.status === "done" && "opacity-60",
-                    task.status === "skipped" && "opacity-50",
-                    "group",
-                  )}
-                >
-                  {/* Title row */}
-                  <div className="flex items-start justify-between gap-2">
-                    <h3
-                      className={cn(
-                        "text-sm font-medium leading-snug",
-                        (task.status === "done" || task.status === "skipped") &&
-                          "line-through text-muted-foreground",
-                      )}
-                    >
-                      {task.title}
-                    </h3>
-
-                    {/* Priority toggle */}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onTogglePriority(
-                          task.id,
-                          task.priority === "high" ? "low" : "high",
-                        )
-                      }
-                      className={cn(
-                        "shrink-0 rounded p-0.5 transition-colors",
-                        "hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-                      )}
-                      aria-label={task.priority === "high" ? "Lower priority" : "Mark as high priority"}
-                      title={task.priority === "high" ? "Lower priority" : "Mark as high priority"}
-                    >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
+                    <div className="flex w-14 flex-col items-end">
+                      <time
+                        dateTime={task.start_time}
                         className={cn(
-                          "shrink-0",
-                          task.priority === "high" ? "text-amber-500" : "text-muted-foreground/40",
+                          "block text-xs font-medium tabular-nums tracking-tight",
+                          isStickyActive
+                            ? "text-foreground"
+                            : isPast
+                              ? "text-muted-foreground/50"
+                              : "text-muted-foreground",
+                        )}
+                      >
+                        {formatTimeDisplay(task.start_time)}
+                      </time>
+                    </div>
+                  </div>
+
+                  {/* ── MIDDLE COLUMN: Sticky node + connecting line ────── */}
+                  <div className="flex flex-col items-center">
+                    {/* Sticky node dot */}
+                    <div
+                      className={cn(
+                        "sticky flex size-6 items-center justify-center",
+                        STICKY_TOP,
+                      )}
+                      style={{ zIndex: 2 }}
+                    >
+                      <span
+                        className={cn(
+                          "flex size-[14px] shrink-0 items-center justify-center rounded-full border-2 transition-all duration-300",
+                          task.status === "done"
+                            ? "border-emerald-500 bg-emerald-100 dark:bg-emerald-900/30"
+                            : task.status === "skipped"
+                              ? "border-muted-foreground/40 bg-muted"
+                              : isStickyActive
+                                ? "border-primary bg-primary shadow-[0_0_0_5px_rgba(59,130,246,0.15)] ring-[3px] ring-primary/20"
+                                : isPast
+                                  ? "border-muted-foreground/30 bg-background"
+                                  : "border-muted-foreground/50 bg-background",
                         )}
                         aria-hidden="true"
                       >
-                        {task.priority === "high" ? (
-                          <>
-                            <path d="M12 3v18" />
-                            <path d="M8 7l4-4 4 4" />
-                          </>
-                        ) : (
-                          <>
-                            <path d="M12 21V3" />
-                            <path d="M8 17l4 4 4-4" />
-                          </>
+                        {task.status === "done" && (
+                          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
                         )}
-                      </svg>
-                    </button>
+                        {task.status === "unfinished" && isStickyActive && (
+                          <span className="size-[6px] rounded-full bg-primary-foreground" />
+                        )}
+                      </span>
+                    </div>
+
+                    {/* Vertical connector line */}
+                    <div className="-mt-2.5 w-px flex-1 border-l border-border/60" />
                   </div>
 
-                  {/* Description */}
-                  {task.description && (
-                    <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground line-clamp-2">
-                      {task.description}
-                    </p>
-                  )}
+                  {/* ── RIGHT COLUMN: Task card ──────────────────────────── */}
+                  <div className="flex flex-1 flex-col gap-3 pb-8 pl-2 md:pl-4">
+                    {/* Mobile-only time label */}
+                    <div className="flex items-center gap-2 md:hidden">
+                      <time
+                        dateTime={task.start_time}
+                        className={cn(
+                          "text-xs font-medium tabular-nums tracking-tight",
+                          isPast ? "text-muted-foreground/50" : "text-muted-foreground",
+                        )}
+                      >
+                        {formatTimeDisplay(task.start_time)}
+                      </time>
+                    </div>
 
-                  {/* Bottom bar */}
-                  <div className="mt-2.5 flex items-center justify-between gap-2">
-                    {/* Status badge */}
-                    <span
+                    {/* Card */}
+                    <div
                       className={cn(
-                        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider",
-                        task.status === "done" &&
-                          "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400",
-                        task.status === "skipped" &&
-                          "bg-muted text-muted-foreground dark:bg-muted/50",
-                        task.status === "unfinished" && [
-                          isStickyActive
-                            ? "bg-primary/10 text-primary"
-                            : "bg-muted text-muted-foreground",
+                        "relative min-w-0 rounded-lg border bg-card p-3.5 text-card-foreground shadow-xs transition-all duration-200",
+                        isStickyActive && [
+                          "border-primary/40 shadow-sm shadow-primary/5",
+                          "ring-1 ring-primary/10",
                         ],
+                        task.priority === "high" && "border-l-2 border-l-amber-400",
+                        task.status === "done" && "opacity-60",
+                        task.status === "skipped" && "opacity-50",
+                        "group",
                       )}
                     >
-                      <StatusIcon status={task.status} />
-                      {task.status === "unfinished" ? "Pending" : task.status}
-                    </span>
+                      {/* Title row */}
+                      <div className="flex items-start justify-between gap-2">
+                        <h3
+                          className={cn(
+                            "text-sm font-medium leading-snug",
+                            (task.status === "done" || task.status === "skipped") &&
+                            "line-through text-muted-foreground",
+                          )}
+                        >
+                          {task.title}
+                        </h3>
 
-                  </div>
+                        {/* Priority toggle */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onTogglePriority(
+                              task.id,
+                              task.priority === "high" ? "low" : "high",
+                            )
+                          }
+                          className={cn(
+                            "shrink-0 rounded p-0.5 transition-colors",
+                            "hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+                          )}
+                          aria-label={task.priority === "high" ? "Lower priority" : "Mark as high priority"}
+                          title={task.priority === "high" ? "Lower priority" : "Mark as high priority"}
+                        >
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className={cn(
+                              "shrink-0",
+                              task.priority === "high" ? "text-amber-500" : "text-muted-foreground/40",
+                            )}
+                            aria-hidden="true"
+                          >
+                            {task.priority === "high" ? (
+                              <>
+                                <path d="M12 3v18" />
+                                <path d="M8 7l4-4 4 4" />
+                              </>
+                            ) : (
+                              <>
+                                <path d="M12 21V3" />
+                                <path d="M8 17l4 4 4-4" />
+                              </>
+                            )}
+                          </svg>
+                        </button>
+                      </div>
 
-                  {/* Hover-reveal action bar */}
-                  <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-0.5 rounded-b-lg bg-gradient-to-t from-card via-card/90 to-transparent px-3.5 pb-2.5 pt-6 opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100">
-                    <Button
-                      variant="ghost"
-                      size="xs"
-                      onClick={() =>
-                        onUpdateStatus(task.id, getNextStatus(task.status))
-                      }
-                      aria-label={`Mark as ${getNextStatus(task.status)}`}
-                      className="gap-1 px-1.5 text-[10px] font-medium text-muted-foreground hover:text-foreground"
-                    >
-                      {getNextStatus(task.status) === "done" && (
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
+                      {/* Description */}
+                      {task.description && (
+                        <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground line-clamp-2">
+                          {task.description}
+                        </p>
                       )}
-                      {getNextStatus(task.status) === "skipped" && (
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="18" y1="6" x2="6" y2="18" />
-                          <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                      )}
-                      {getNextStatus(task.status) === "unfinished" && (
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="10" />
-                        </svg>
-                      )}
-                      {getNextStatus(task.status) === "done"
-                        ? "Done"
-                        : getNextStatus(task.status) === "skipped"
-                          ? "Skip"
-                          : "Reopen"}
-                    </Button>
+
+                      {/* Bottom bar */}
+                      <div className="mt-2.5 flex items-center justify-between gap-2">
+                        {/* Status badge */}
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider",
+                            task.status === "done" &&
+                            "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400",
+                            task.status === "skipped" &&
+                            "bg-muted text-muted-foreground dark:bg-muted/50",
+                            task.status === "unfinished" && [
+                              isStickyActive
+                                ? "bg-primary/10 text-primary"
+                                : "bg-muted text-muted-foreground",
+                            ],
+                          )}
+                        >
+                          <StatusIcon status={task.status} />
+                          {task.status === "unfinished" ? "Pending" : task.status}
+                        </span>
+
+                      </div>
+
+                      {/* Hover-reveal action bar */}
+                      <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-0.5 rounded-b-lg bg-gradient-to-t from-card via-card/90 to-transparent px-3.5 pb-2.5 pt-6 opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100">
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={() =>
+                            onUpdateStatus(task.id, getNextStatus(task.status))
+                          }
+                          aria-label={`Mark as ${getNextStatus(task.status)}`}
+                          className="gap-1 px-1.5 text-[10px] font-medium text-muted-foreground hover:text-foreground"
+                        >
+                          {getNextStatus(task.status) === "done" && (
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                          {getNextStatus(task.status) === "skipped" && (
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="18" y1="6" x2="6" y2="18" />
+                              <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                          )}
+                          {getNextStatus(task.status) === "unfinished" && (
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="10" />
+                            </svg>
+                          )}
+                          {getNextStatus(task.status) === "done"
+                            ? "Done"
+                            : getNextStatus(task.status) === "skipped"
+                              ? "Skip"
+                              : "Reopen"}
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
-            </React.Fragment>
-          );
-        })}
+              </React.Fragment>
+            );
+          })}
 
-        {/* ── Timeline trail end ──────────────────────────────────── */}
-        <div className="relative flex justify-end gap-2">
-          <div className="self-start pb-4 max-md:hidden">
-            <div className="flex w-14 flex-col items-end" />
-          </div>
-          <div className="flex flex-col items-center">
-            <div className="flex size-6 items-center justify-center">
-              <div className="size-2 rounded-full border border-dashed border-border/50 bg-background" aria-hidden="true" />
+          {/* ── Timeline trail end ──────────────────────────────────── */}
+          <div className="relative flex justify-end gap-2">
+            <div className="self-start pb-4 max-md:hidden">
+              <div className="flex w-14 flex-col items-end" />
             </div>
-            <div className="-mt-2.5 w-px flex-1 border-l border-dashed border-border/30" />
-          </div>
-          <div className="flex flex-1 flex-col pb-8 pl-2 md:pl-4">
-            <span className="text-[10px] text-muted-foreground/30 font-medium tracking-wider uppercase select-none pt-1">
-              End of timeline
-            </span>
+            <div className="flex flex-col items-center">
+              <div className="flex size-6 items-center justify-center">
+                <div className="size-2 rounded-full border border-dashed border-border/50 bg-background" aria-hidden="true" />
+              </div>
+              <div className="-mt-2.5 w-px flex-1 border-l border-dashed border-border/30" />
+            </div>
+            <div className="flex flex-1 flex-col pb-8 pl-2 md:pl-4">
+              <span className="text-[10px] text-muted-foreground/30 font-medium tracking-wider uppercase select-none pt-1">
+                End of timeline
+              </span>
+            </div>
           </div>
         </div>
-      </div>
 
-      <ScrollAnchor />
+        <ScrollAnchor />
+      </div>
     </div>
   );
 }

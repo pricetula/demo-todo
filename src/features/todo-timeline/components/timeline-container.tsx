@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { format } from "date-fns";
 import { TaskForm } from "@/features/todo-timeline/components/task-form";
 import { TimelineView } from "@/features/todo-timeline/components/timeline-view";
 import {
@@ -11,6 +10,15 @@ import {
   useUpdateTaskPriority,
 } from "@/features/todo-timeline/hooks/use-tasks";
 import { type TaskStatus, type TaskPriority } from "@/features/todo-timeline/types";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 // ─── Top-level container for the Todo Timeline feature ─────────────────────
 
@@ -56,8 +64,8 @@ export function TimelineContainer() {
     updatePriority.mutate({ task, newPriority });
   }
 
-  // ── Form visibility ────────────────────────────────────────────────
-  const [formOpen, setFormOpen] = React.useState(true);
+  // ── Dialog state ────────────────────────────────────────────────────
+  const [dialogOpen, setDialogOpen] = React.useState(false);
 
   // ── Render ──────────────────────────────────────────────────────────
   return (
@@ -68,33 +76,45 @@ export function TimelineContainer() {
           <h1 className="text-xl font-semibold tracking-tight">
             Task Timeline
           </h1>
-          <span className="text-sm text-muted-foreground">
-            {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
-          </span>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger render={<Button variant="outline" size="sm" />}>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="mr-1.5"
+                aria-hidden="true"
+              >
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Add Task
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>New Task</DialogTitle>
+                <DialogDescription>
+                  Create a new task for your timeline.
+                </DialogDescription>
+              </DialogHeader>
+              <TaskForm
+                onSubmit={(payload) => {
+                  handleCreateTask(payload);
+                  setDialogOpen(false);
+                }}
+                onCancel={() => setDialogOpen(false)}
+              />
+            </DialogContent>
+          </Dialog>
         </div>
         <p className="text-xs text-muted-foreground/60">
-          All tasks sorted chronologically. Use the form below to add new ones.
+          Tasks are sorted chronologically. Click <strong>Add Task</strong> to create a new one.
         </p>
-      </div>
-
-      {/* ── Collapsible Form ──────────────────────────────────── */}
-      <div className="rounded-lg border bg-card p-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-muted-foreground">New Task</h2>
-          <button
-            type="button"
-            onClick={() => setFormOpen(!formOpen)}
-            className="text-xs text-muted-foreground/60 hover:text-foreground transition-colors"
-            aria-label={formOpen ? "Collapse form" : "Expand form"}
-          >
-            {formOpen ? "Collapse" : "Expand"}
-          </button>
-        </div>
-        {formOpen && (
-          <div className="mt-3">
-            <TaskForm onSubmit={handleCreateTask} />
-          </div>
-        )}
       </div>
 
       {/* ── Vertical Timeline ──────────────────────────────────── */}
@@ -110,12 +130,7 @@ export function TimelineContainer() {
           tasks={tasks}
           onUpdateStatus={handleUpdateStatus}
           onTogglePriority={handleTogglePriority}
-          onAddTask={() => {
-            setFormOpen(true);
-            document
-              .querySelector('[data-feature="todo-timeline"]')
-              ?.firstElementChild?.scrollIntoView({ behavior: "smooth", block: "start" });
-          }}
+          onAddTask={() => setDialogOpen(true)}
         />
       )}
     </div>

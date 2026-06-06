@@ -185,15 +185,8 @@ describe("Scenario 1 — Initial Focus Anchor", () => {
 
     renderTimelineView({ tasks });
 
-    // The "Today" divider is an aria-hidden decorative element with the text "Today"
-    const todayLabels = screen.getAllByText("Today");
-    expect(todayLabels.length).toBeGreaterThanOrEqual(1);
-
-    // The divider uses uppercase text — also verify the label exists
-    const todayHeader = todayLabels.find(
-      (el) => el.tagName === "SPAN" && el.className.includes("tracking-wider"),
-    );
-    expect(todayHeader).toBeInTheDocument();
+    // The date header shows "Today" because the boundary task is on today's date
+    expect(screen.getByTestId("timeline-date-header")).toHaveTextContent("Today");
   });
 
   it("does NOT call scrollIntoView when tasks array is empty", () => {
@@ -235,9 +228,8 @@ describe("Scenario 1 — Initial Focus Anchor", () => {
     const boundaryRow = document.querySelector('[data-task-id="boundary"]');
     expect(boundaryRow).toBeInTheDocument();
 
-    // The "Today" divider must appear before (above) the boundary task
-    const allLabels = screen.getAllByText("Today");
-    expect(allLabels.length).toBeGreaterThanOrEqual(1);
+    // and the date header shows 'Today' for the boundary task's date.
+    expect(screen.getByTestId("timeline-date-header")).toHaveTextContent("Today");
   });
 });
 
@@ -832,6 +824,65 @@ describe("Edge Cases — Data Boundary", () => {
     // because the status=done overrides the "isPast" logic
     const timeEl = document.querySelector('time[datetime="16:00"]');
     expect(timeEl!.className).toMatch(/text-muted-foreground\/50/);
+  });
+});
+
+describe("Date Header — Active Date Label", () => {
+  it("shows 'Today' when the boundary task is on today's date (2026-06-15)", () => {
+    const tasks = [
+      makeTask({ id: "t1", title: "Task", scheduled_date: "2026-06-15", start_time: "10:00" }),
+    ];
+
+    renderTimelineView({ tasks });
+
+    // The sticky date header shows "Today" because scheduled_date matches todayStr()
+    const header = screen.getByTestId("timeline-date-header");
+    expect(header).toHaveTextContent("Today");
+  });
+
+  it("shows a formatted date like 'June 14, 2026' for tasks from a different day", () => {
+    const tasks = [
+      makeTask({ id: "t1", title: "Yesterday task", scheduled_date: "2026-06-14", start_time: "10:00" }),
+    ];
+
+    renderTimelineView({ tasks });
+
+    expect(screen.getByTestId("timeline-date-header")).toHaveTextContent("June 14, 2026");
+    // "Today" must NOT appear in the header — all tasks are in the past, so
+    // no boundary divider renders, and the header shows the formatted date.
+    expect(screen.queryAllByText("Today")).toHaveLength(0);
+  });
+
+  it("shows formatted date for dates in other months", () => {
+    const tasks = [
+      makeTask({ id: "t1", title: "Next month", scheduled_date: "2026-07-04", start_time: "10:00" }),
+    ];
+
+    renderTimelineView({ tasks });
+
+    expect(screen.getByTestId("timeline-date-header")).toHaveTextContent("July 4, 2026");
+  });
+
+  it("does not render a date header in the empty state", () => {
+    renderTimelineView({ tasks: [] });
+
+    // The date header should not be present
+    expect(screen.queryByTestId("timeline-date-header")).toBeNull();
+  });
+
+  it("updates the date label when tasks span multiple dates and stickyActiveId changes", () => {
+    // Two tasks on different dates. The boundary (first with scheduled_date >= today)
+    // is the today task. The header should show "Today".
+    const tasks = [
+      makeTask({ id: "past", title: "Yesterday", scheduled_date: "2026-06-14", start_time: "10:00" }),
+      makeTask({ id: "today", title: "Today task", scheduled_date: "2026-06-15", start_time: "11:00" }),
+      makeTask({ id: "future", title: "Tomorrow", scheduled_date: "2026-06-16", start_time: "12:00" }),
+    ];
+
+    renderTimelineView({ tasks });
+
+    // Header shows "Today" because the boundary (first task with date >= today) is June 15
+    expect(screen.getByTestId("timeline-date-header")).toHaveTextContent("Today");
   });
 });
 
