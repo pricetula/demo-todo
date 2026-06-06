@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
-type TimeFormat = "AM" | "PM" | "24h";
+export type TimeFormat = "AM" | "PM" | "24h";
 
 const TIME_FORMATS: TimeFormat[] = ["AM", "PM", "24h"];
 
@@ -90,7 +90,7 @@ export type TaskFormValues = z.infer<typeof taskFormSchema>;
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 /** Convert form time fields into a 24-hour `HH:mm` string. */
-function toHHmm(hours: string, minutes: string, timeFormat: TimeFormat): string {
+export function toHHmm(hours: string, minutes: string, timeFormat: TimeFormat): string {
   let h = Number(hours);
 
   if (timeFormat === "AM") {
@@ -152,6 +152,9 @@ export function TaskForm({ onSubmit, onCancel }: TaskFormProps) {
       scheduled_date,
       start_time,
     });
+
+    // Clear form so the user can quickly add another task
+    form.reset();
   }
 
   // ── Render ──────────────────────────────────────────────────────────
@@ -273,7 +276,7 @@ export function TaskForm({ onSubmit, onCancel }: TaskFormProps) {
               name="hours"
               render={({ field }) => (
                 <FormItem className="flex-1">
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="HH" />
@@ -300,7 +303,7 @@ export function TaskForm({ onSubmit, onCancel }: TaskFormProps) {
               name="minutes"
               render={({ field }) => (
                 <FormItem className="flex-1">
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="MM" />
@@ -325,7 +328,7 @@ export function TaskForm({ onSubmit, onCancel }: TaskFormProps) {
               name="timeFormat"
               render={({ field }) => (
                 <FormItem className="flex-1">
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="fmt" />
