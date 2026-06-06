@@ -1,16 +1,7 @@
 // ─── Task Schema ───────────────────────────────────────────────────────────
-export interface Task {
-  id: string;
-  title: string;
-  description: string;
-  status: 'unfinished' | 'done' | 'skipped';
-  priority: 'low' | 'high';
-  scheduled_date: string;   // YYYY-MM-DD
-  start_time: string;       // HH:mm
-  completed_at: string | null; // ISO Timestamp
-  created_at: string;       // ISO Timestamp
-  updated_at: string;       // ISO Timestamp
-}
+// Single source of truth lives in ../types — re-exported here for convenience.
+import { type Task } from "../types";
+export type { Task };
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 const DB_NAME = 'todo_timeline_db';

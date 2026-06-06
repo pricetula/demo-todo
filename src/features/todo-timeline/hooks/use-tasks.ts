@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { type Task } from '@/features/todo-timeline/types';
 import {
-  type Task,
   getTasksByDate,
   createTask,
   updateTask,
