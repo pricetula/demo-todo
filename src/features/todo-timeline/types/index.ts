@@ -1,8 +1,10 @@
 // ─── Domain types for the Todo Timeline feature ────────────────────────────
+// Single source of truth. DB store and hooks import from here.
+// If you change these, update DB schema version & add a migration.
 
-export type TaskStatus = "active" | "completed" | "archived";
+export type TaskStatus = "unfinished" | "done" | "skipped";
 
-export type TaskPriority = "low" | "medium" | "high" | "urgent";
+export type TaskPriority = "low" | "high";
 
 export interface Task {
   id: string;
@@ -10,25 +12,24 @@ export interface Task {
   description: string;
   status: TaskStatus;
   priority: TaskPriority;
-  createdAt: number;       // unix ms
-  updatedAt: number;       // unix ms
-  dueDate: number | null;  // unix ms
-  sortOrder: number;
+  scheduled_date: string;    // YYYY-MM-DD
+  start_time: string;        // HH:mm
+  completed_at: string | null; // ISO timestamp
+  created_at: string;        // ISO timestamp
+  updated_at: string;        // ISO timestamp
 }
 
-/** Payload used when creating or updating a task (id/timestamps are auto-generated). */
-export type TaskDraft = Omit<Task, "id" | "createdAt" | "updatedAt">;
+/** Payload used when creating a task (id and timestamps are auto-generated). */
+export type TaskDraft = Omit<Task, "id" | "created_at" | "updated_at">;
 
-/** Enumerate statuses for dropdown / filter usage. */
-export const TASK_STATUSES: TaskStatus[] = ["active", "completed", "archived"];
+/** All valid statuses in display order. */
+export const TASK_STATUSES: TaskStatus[] = ["unfinished", "done", "skipped"];
 
-/** Enumerate priorities for dropdown / filter usage. */
-export const TASK_PRIORITIES: TaskPriority[] = ["low", "medium", "high", "urgent"];
+/** All valid priorities in ascending order. */
+export const TASK_PRIORITIES: TaskPriority[] = ["low", "high"];
 
 /** Human-readable labels for each priority level. */
 export const PRIORITY_LABELS: Record<TaskPriority, string> = {
   low: "Low",
-  medium: "Medium",
   high: "High",
-  urgent: "Urgent",
 };
