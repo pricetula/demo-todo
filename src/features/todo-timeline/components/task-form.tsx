@@ -1,24 +1,21 @@
 "use client";
 
 import * as React from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+  Field,
+  FieldError,
+  FieldLabel,
+} from "@/components/ui/field";
 import {
   Select,
   SelectContent,
@@ -36,7 +33,6 @@ export type TimeFormat = "AM" | "PM" | "24h";
 
 const TIME_FORMATS: TimeFormat[] = ["AM", "PM", "24h"];
 
-/** Generate 0-padded hour labels for range [`start`, `end`] inclusive. */
 function hourOptions(start: number, end: number): string[] {
   const labels: string[] = [];
   for (let h = start; h <= end; h++) {
@@ -98,7 +94,6 @@ export function toHHmm(hours: string, minutes: string, timeFormat: TimeFormat): 
   } else if (timeFormat === "PM") {
     if (h !== 12) h += 12;
   }
-  // "24h" — use hours as-is
 
   return `${String(h).padStart(2, "0")}:${minutes}`;
 }
@@ -106,20 +101,18 @@ export function toHHmm(hours: string, minutes: string, timeFormat: TimeFormat): 
 // ─── Component ─────────────────────────────────────────────────────────────
 
 interface TaskFormProps {
-  /** Callback receiving the clean payload ready for IndexedDB. */
   onSubmit: (payload: {
     title: string;
     description: string;
     priority: "low" | "high";
-    scheduled_date: string; // YYYY-MM-DD
-    start_time: string;     // HH:mm
+    scheduled_date: string;
+    start_time: string;
   }) => void;
   onCancel?: () => void;
 }
 
 export function TaskForm({ onSubmit, onCancel }: TaskFormProps) {
   const form = useForm<TaskFormValues>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(taskFormSchema) as any,
     defaultValues: {
       title: "",
@@ -134,7 +127,6 @@ export function TaskForm({ onSubmit, onCancel }: TaskFormProps) {
 
   const watchTimeFormat = form.watch("timeFormat");
 
-  // Derive hour options based on selected time format
   const hoursItems = React.useMemo<string[]>(() => {
     if (watchTimeFormat === "24h") return hourOptions(0, 23);
     return hourOptions(1, 12);
@@ -153,212 +145,224 @@ export function TaskForm({ onSubmit, onCancel }: TaskFormProps) {
       start_time,
     });
 
-    // Clear form so the user can quickly add another task
     form.reset();
   }
 
   // ── Render ──────────────────────────────────────────────────────────
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
-        {/* ── Title ────────────────────────────────────────────────── */}
-        <FormField
-          control={form.control}
-          name="title"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Title</FormLabel>
-              <FormControl>
-                <Input placeholder="What do you need to do?" maxLength={100} {...field} />
-              </FormControl>
-              <FormDescription>Required — max 100 characters.</FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+    <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
+      {/* ── Title ──────────────────────────────────────────────────── */}
+      <Controller
+        control={form.control}
+        name="title"
+        render={({ field, fieldState }) => (
+          <Field data-invalid={fieldState.invalid}>
+            <FieldLabel htmlFor={field.name}>Title</FieldLabel>
+            <Input
+              {...field}
+              id={field.name}
+              placeholder="What do you need to do?"
+              maxLength={100}
+              aria-invalid={fieldState.invalid}
+            />
+            {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+          </Field>
+        )}
+      />
 
-        {/* ── Description ──────────────────────────────────────────── */}
-        <FormField
-          control={form.control}
-          name="description"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Description</FormLabel>
-              <FormControl>
-                <Textarea
-                  placeholder="Optional details…"
-                  className="resize-none"
-                  rows={3}
-                  {...field}
+      {/* ── Description ────────────────────────────────────────────── */}
+      <Controller
+        control={form.control}
+        name="description"
+        render={({ field, fieldState }) => (
+          <Field data-invalid={fieldState.invalid}>
+            <FieldLabel htmlFor={field.name}>Description</FieldLabel>
+            <Textarea
+              {...field}
+              id={field.name}
+              placeholder="Optional details…"
+              className="resize-none"
+              rows={3}
+              aria-invalid={fieldState.invalid}
+            />
+            {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+          </Field>
+        )}
+      />
+
+      {/* ── Priority ───────────────────────────────────────────────── */}
+      <Controller
+        control={form.control}
+        name="priority"
+        render={({ field, fieldState }) => (
+          <Field data-invalid={fieldState.invalid}>
+            <FieldLabel>Priority</FieldLabel>
+            <div className="flex gap-1">
+              <Button
+                type="button"
+                variant={field.value === "low" ? "default" : "outline"}
+                size="sm"
+                onClick={() => field.onChange("low")}
+                aria-pressed={field.value === "low"}
+              >
+                Low
+              </Button>
+              <Button
+                type="button"
+                variant={field.value === "high" ? "default" : "outline"}
+                size="sm"
+                onClick={() => field.onChange("high")}
+                aria-pressed={field.value === "high"}
+              >
+                High
+              </Button>
+            </div>
+            {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+          </Field>
+        )}
+      />
+
+      {/* ── Date ───────────────────────────────────────────────────── */}
+      <Controller
+        control={form.control}
+        name="date"
+        render={({ field, fieldState }) => (
+          <Field data-invalid={fieldState.invalid}>
+            <FieldLabel>Date</FieldLabel>
+            <Popover>
+              <PopoverTrigger
+                id={field.name}
+                aria-invalid={fieldState.invalid}
+                className={cn(
+                  buttonVariants({ variant: "outline" }),
+                  "w-full justify-start text-left font-normal",
+                  !field.value && "text-muted-foreground",
+                )}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {field.value ? format(field.value, "PPP") : "Pick a date"}
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={field.value}
+                  onSelect={field.onChange}
+                  autoFocus
                 />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+              </PopoverContent>
+            </Popover>
+            {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+          </Field>
+        )}
+      />
 
-        {/* ── Priority ─────────────────────────────────────────────── */}
-        <FormField
-          control={form.control}
-          name="priority"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Priority</FormLabel>
-              <FormControl>
-                <div className="flex gap-1">
-                  <Button
-                    type="button"
-                    variant={field.value === "low" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => field.onChange("low")}
+      {/* ── Time ───────────────────────────────────────────────────── */}
+      <div className="space-y-2">
+        <Label>Time</Label>
+        <div className="flex items-end gap-2">
+          {/* Hours */}
+          <Controller
+            control={form.control}
+            name="hours"
+            render={({ field, fieldState }) => (
+              <Field className="flex-1" data-invalid={fieldState.invalid}>
+                <Select
+                  name={field.name}
+                  value={field.value}
+                  onValueChange={field.onChange}
+                >
+                  <SelectTrigger
+                    id={field.name}
+                    aria-invalid={fieldState.invalid}
                   >
-                    Low
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={field.value === "high" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => field.onChange("high")}
+                    <SelectValue placeholder="HH" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {hoursItems.map((h) => (
+                      <SelectItem key={h} value={h}>
+                        {h}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+              </Field>
+            )}
+          />
+
+          <span className="pb-2 text-sm text-muted-foreground">:</span>
+
+          {/* Minutes */}
+          <Controller
+            control={form.control}
+            name="minutes"
+            render={({ field, fieldState }) => (
+              <Field className="flex-1" data-invalid={fieldState.invalid}>
+                <Select
+                  name={field.name}
+                  value={field.value}
+                  onValueChange={field.onChange}
+                >
+                  <SelectTrigger
+                    id={field.name}
+                    aria-invalid={fieldState.invalid}
                   >
-                    High
-                  </Button>
-                </div>
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+                    <SelectValue placeholder="MM" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MINUTES.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+              </Field>
+            )}
+          />
 
-        {/* ── Date ─────────────────────────────────────────────────── */}
-        <FormField
-          control={form.control}
-          name="date"
-          render={({ field }) => (
-            <FormItem className="flex flex-col">
-              <FormLabel>Date</FormLabel>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <FormControl>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !field.value && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {field.value ? format(field.value, "PPP") : "Pick a date"}
-                    </Button>
-                  </FormControl>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={field.value}
-                    onSelect={field.onChange}
-                    autoFocus
-                  />
-                </PopoverContent>
-              </Popover>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {/* ── Time ─────────────────────────────────────────────────── */}
-        <div className="space-y-2">
-          <FormLabel>Time</FormLabel>
-          <div className="flex items-end gap-2">
-            {/* Hours */}
-            <FormField
-              control={form.control}
-              name="hours"
-              render={({ field }) => (
-                <FormItem className="flex-1">
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="HH" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {hoursItems.map((h) => (
-                        <SelectItem key={h} value={h}>
-                          {h}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <span className="pb-2 text-sm text-muted-foreground">:</span>
-
-            {/* Minutes */}
-            <FormField
-              control={form.control}
-              name="minutes"
-              render={({ field }) => (
-                <FormItem className="flex-1">
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="MM" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {MINUTES.map((m) => (
-                        <SelectItem key={m} value={m}>
-                          {m}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Format toggle (AM / PM / 24h) */}
-            <FormField
-              control={form.control}
-              name="timeFormat"
-              render={({ field }) => (
-                <FormItem className="flex-1">
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="fmt" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {TIME_FORMATS.map((fmt) => (
-                        <SelectItem key={fmt} value={fmt}>
-                          {fmt}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
+          {/* Format toggle (AM / PM / 24h) */}
+          <Controller
+            control={form.control}
+            name="timeFormat"
+            render={({ field, fieldState }) => (
+              <Field className="flex-1" data-invalid={fieldState.invalid}>
+                <Select
+                  name={field.name}
+                  value={field.value}
+                  onValueChange={field.onChange}
+                >
+                  <SelectTrigger
+                    id={field.name}
+                    aria-invalid={fieldState.invalid}
+                  >
+                    <SelectValue placeholder="fmt" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIME_FORMATS.map((fmt) => (
+                      <SelectItem key={fmt} value={fmt}>
+                        {fmt}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+              </Field>
+            )}
+          />
         </div>
+      </div>
 
-        {/* ── Actions ──────────────────────────────────────────────── */}
-        <div className="flex justify-end gap-2 pt-2">
-          {onCancel && (
-            <Button type="button" variant="outline" onClick={onCancel}>
-              Cancel
-            </Button>
-          )}
-          <Button type="submit">Add Task</Button>
-        </div>
-      </form>
-    </Form>
+      {/* ── Actions ────────────────────────────────────────────────── */}
+      <div className="flex justify-end gap-2 pt-2">
+        {onCancel && (
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+        )}
+        <Button type="submit">Add Task</Button>
+      </div>
+    </form>
   );
 }

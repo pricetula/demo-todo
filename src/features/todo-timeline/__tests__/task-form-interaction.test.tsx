@@ -59,7 +59,11 @@ async function selectTimeOption(
  * identifies June 15.
  */
 async function pickDate15(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: "Date" }));
+  // The date trigger has id="date" (set in the Controller). The PopoverTrigger
+  // wraps it with asChild, creating nested buttons; target by id to be precise.
+  const dateButton = document.querySelector<HTMLButtonElement>('#date');
+  if (!dateButton) throw new Error('Could not find button with id="date"');
+  await user.click(dateButton);
 
   // Find a button whose exact text content is "15"
   const allButtons = document.querySelectorAll<HTMLButtonElement>("button");
