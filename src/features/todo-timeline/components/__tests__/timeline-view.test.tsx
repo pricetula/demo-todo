@@ -493,7 +493,7 @@ describe("Scenario 4 — Priority Accent Visuals", () => {
     expect(svg!.getAttribute("class")).toMatch(/text-muted-foreground/);
   });
 
-  it("fires onTogglePriority when the priority button is clicked", async () => {
+  it("fires onTogglePriority when the priority icon is clicked (low→high)", async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const onTogglePriority = vi.fn();
 
@@ -503,10 +503,10 @@ describe("Scenario 4 — Priority Accent Visuals", () => {
 
     renderTimelineView({ tasks, onTogglePriority });
 
+    // Click toggles directly — no popover needed
     const toggleBtn = screen.getByRole("button", { name: /mark as high priority/i });
     await user.click(toggleBtn);
 
-    // Priority toggles from "low" to "high"
     expect(onTogglePriority).toHaveBeenCalledTimes(1);
     expect(onTogglePriority).toHaveBeenCalledWith("t1", "high");
   });
@@ -733,7 +733,7 @@ describe("Integration — Status Toggle Callback Payload", () => {
     expect(onUpdateStatus).toHaveBeenCalledWith("task-3", "unfinished");
   });
 
-  it("does not fire onUpdateStatus when clicking the priority toggle instead", async () => {
+  it("does not fire onUpdateStatus when clicking the priority toggle", async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const onUpdateStatus = vi.fn();
     const onTogglePriority = vi.fn();
@@ -744,10 +744,9 @@ describe("Integration — Status Toggle Callback Payload", () => {
 
     renderTimelineView({ tasks, onUpdateStatus, onTogglePriority });
 
-    // Click the priority toggle (arrow-up icon button)
+    // Click the priority toggle directly — fires onTogglePriority, not onUpdateStatus
     await user.click(screen.getByRole("button", { name: /mark as high priority/i }));
 
-    // Status should NOT have been triggered
     expect(onUpdateStatus).not.toHaveBeenCalled();
     expect(onTogglePriority).toHaveBeenCalledTimes(1);
   });
