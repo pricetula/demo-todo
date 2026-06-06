@@ -5,7 +5,10 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { type Task, type TaskStatus, type TaskPriority } from "@/features/todo-timeline/types";
 import { Button } from "@/components/ui/button";
+import { CompletionRing } from "@/features/todo-timeline/components/completion-ring";
+import { StreakBadge } from "@/features/todo-timeline/components/streak-badge";
 import { ScrollAnchor } from "@/features/todo-timeline/components/scroll-anchor";
+import { PriorityToggleButton } from "@/features/todo-timeline/components/priority-toggle-button";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -152,23 +155,27 @@ export function TimelineView({
     else taskRefs.current.delete(id);
   }
 
-  // ── Derive the sticky date label from the active / boundary task ──
-  const activeDateLabel = React.useMemo<string | null>(() => {
-    if (tasks.length === 0) return null;
-
-    let referenceTask: Task | undefined;
+  // ── Derive the reference task and active date from scroll position ─
+  const referenceTask = React.useMemo<Task | undefined>(() => {
+    if (tasks.length === 0) return undefined;
 
     if (stickyActiveId) {
-      referenceTask = tasks.find((t) => t.id === stickyActiveId);
+      return tasks.find((t) => t.id === stickyActiveId);
     }
 
-    if (!referenceTask && todayBoundaryIndex < tasks.length) {
-      referenceTask = tasks[todayBoundaryIndex];
+    if (todayBoundaryIndex < tasks.length) {
+      return tasks[todayBoundaryIndex];
     }
 
-    if (!referenceTask) {
-      referenceTask = tasks[0];
-    }
+    return tasks[0];
+  }, [tasks, stickyActiveId, todayBoundaryIndex]);
+
+  const activeDateStr = React.useMemo<string>(() => {
+    return referenceTask?.scheduled_date ?? todayStr();
+  }, [referenceTask]);
+
+  const activeDateLabel = React.useMemo<string | null>(() => {
+    if (!referenceTask) return null;
 
     const date = referenceTask.scheduled_date;
     const today = todayStr();
@@ -178,7 +185,13 @@ export function TimelineView({
     const [y, m, d] = date.split("-").map(Number);
     const parsed = new Date(y, m - 1, d);
     return format(parsed, "MMMM d, yyyy");
-  }, [tasks, stickyActiveId, todayBoundaryIndex]);
+  }, [referenceTask]);
+
+  // ── Tasks for the active date (used by completion ring) ──────────
+  const tasksForDate = React.useMemo(
+    () => tasks.filter((t) => t.scheduled_date === activeDateStr),
+    [tasks, activeDateStr],
+  );
 
   // ── Empty state ────────────────────────────────────────────────────
   if (tasks.length === 0) {
@@ -226,13 +239,20 @@ export function TimelineView({
   // ── Render timeline with sticky-node layout ────────────────────────
   return (
     <div>
-      {/* date label */}
-      <span
-        className="text-sm mb-8 block"
-        data-testid="timeline-date-header"
-      >
-        {activeDateLabel}
-      </span>
+      <div className="flex items-center justify-between gap-3 mb-6" data-component="timeline-view-header">
+        {/* date label */}
+        <span
+          className="text-sm"
+          data-testid="timeline-date-header"
+        >
+          {activeDateLabel}
+        </span>
+
+        <div className="flex items-center gap-2">
+          <CompletionRing tasks={tasksForDate} />
+          <StreakBadge tasks={tasks} />
+        </div>
+      </div>
 
       <div
         ref={containerRef}
@@ -363,50 +383,16 @@ export function TimelineView({
                           {task.title}
                         </h3>
 
-                        {/* Priority toggle */}
-                        <button
-                          type="button"
+                        {/* Priority toggle with hover info popup */}
+                        <PriorityToggleButton
+                          priority={task.priority}
                           onClick={() =>
                             onTogglePriority(
                               task.id,
                               task.priority === "high" ? "low" : "high",
                             )
                           }
-                          className={cn(
-                            "shrink-0 rounded p-0.5 transition-colors",
-                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-                          )}
-                          aria-label={task.priority === "high" ? "Lower priority" : "Mark as high priority"}
-                          title={task.priority === "high" ? "Lower priority" : "Mark as high priority"}
-                        >
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className={cn(
-                              "shrink-0",
-                              task.priority === "high" ? "text-amber-500" : "text-muted-foreground/40",
-                            )}
-                            aria-hidden="true"
-                          >
-                            {task.priority === "high" ? (
-                              <>
-                                <path d="M12 3v18" />
-                                <path d="M8 7l4-4 4 4" />
-                              </>
-                            ) : (
-                              <>
-                                <path d="M12 21V3" />
-                                <path d="M8 17l4 4 4-4" />
-                              </>
-                            )}
-                          </svg>
-                        </button>
+                        />
                       </div>
 
                       {/* Description */}

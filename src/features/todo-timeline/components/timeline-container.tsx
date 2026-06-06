@@ -11,6 +11,10 @@ import {
   useDeleteTask,
 } from "@/features/todo-timeline/hooks/use-tasks";
 import { type TaskStatus, type TaskPriority } from "@/features/todo-timeline/types";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
+import { deleteTask as deleteTaskFromStore } from "@/features/todo-timeline/db/indexeddb-store";
+import { taskKeys } from "@/features/todo-timeline/hooks/use-tasks";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,7 +22,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 
 // ─── Top-level container for the Todo Timeline feature ─────────────────────
@@ -31,6 +34,52 @@ export function TimelineContainer() {
   const updateStatus = useUpdateTaskStatus();
   const updatePriority = useUpdateTaskPriority();
   const deleteTask = useDeleteTask();
+
+  // ── Helpers ────────────────────────────────────────────────────────
+  const queryClient = useQueryClient();
+
+  function todayStr(): string {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  const MAX_TASKS = 10;
+
+  // ── Add-task with limit enforcement ────────────────────────────────
+  const handleAddTaskClick = React.useCallback(async () => {
+    if (tasks.length < MAX_TASKS) {
+      setDialogOpen(true);
+      return;
+    }
+
+    // At the limit — look for past, done tasks that can be auto-cleaned
+    const today = todayStr();
+    const pastDoneTasks = tasks.filter(
+      (t) => t.status === "done" && t.scheduled_date < today,
+    );
+
+    if (pastDoneTasks.length > 0) {
+      // Delete them in parallel directly from the store, then invalidate
+      const deletePromises = pastDoneTasks.map((t) => deleteTaskFromStore(t.id));
+      await Promise.all(deletePromises);
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+
+      // Check if there will be room after cleanup
+      if (tasks.length - pastDoneTasks.length < MAX_TASKS) {
+        setDialogOpen(true);
+        return;
+      }
+    }
+
+    // Still at or over the limit after cleanup (or nothing to clean)
+    toast.error("Task limit reached", {
+      description: `You can have a maximum of ${MAX_TASKS} tasks. Complete and delete old tasks to make room.`,
+      duration: 5000,
+    });
+  }, [tasks, queryClient]);
 
   // ── Handlers ───────────────────────────────────────────────────────
   function handleCreateTask(payload: {
@@ -79,7 +128,7 @@ export function TimelineContainer() {
             Task Timeline
           </h1>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger render={<Button variant="outline" size="sm" />}>
+            <Button variant="outline" size="sm" onClick={handleAddTaskClick}>
               <svg
                 width="14"
                 height="14"
@@ -96,7 +145,7 @@ export function TimelineContainer() {
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
               Add Task
-            </DialogTrigger>
+            </Button>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>New Task</DialogTitle>
