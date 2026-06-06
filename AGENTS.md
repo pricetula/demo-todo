@@ -1,6 +1,7 @@
 # AGENTS.md — Todo Timeline
 
 ## Stack
+- **Package manager**: `pnpm` (always use pnpm, never npm)
 - **Next.js** 16 (App Router) + **React** 19
 - **Tailwind CSS** v4 + **shadcn/ui** patterns
 - **@tanstack/react-query** v5
@@ -61,6 +62,6 @@ Validated task creation form with `react-hook-form` + `zod`.
 
 ## Dev
 ```bash
-npm run dev    # local dev server
-npm run build  # type-check + production build
+pnpm dev    # local dev server
+pnpm build  # type-check + production build
 ```
