@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type Task } from '@/features/todo-timeline/types';
 import {
   getTasksByDate,
+  getAllTasks,
   createTask,
   updateTask,
 } from '@/features/todo-timeline/db/indexeddb-store';
@@ -10,6 +11,7 @@ import {
 export const taskKeys = {
   all: ['tasks'] as const,
   byDate: (dateStr: string) => ['tasks', dateStr] as const,
+  timeline: ['tasks', '__all__'] as const,
 };
 
 // ─── A. useTimelineTasks ───────────────────────────────────────────────────
@@ -26,31 +28,44 @@ export function useTimelineTasks(dateStr: string) {
   });
 }
 
-// ─── B. useCreateTask ──────────────────────────────────────────────────────
+// ─── B. useAllTasks ──────────────────────────────────────────────────────
 /**
- * Creates a new task and invalidates the timeline query for the given date
- * so the UI re-renders with the new entry.
+ * Fetches ALL tasks sorted chronologically. Past tasks remain in the DOM
+ * above the viewport; the scroll position starts at today's boundary.
  */
-export function useCreateTask(dateStr: string) {
+export function useAllTasks() {
+  return useQuery<Task[]>({
+    queryKey: taskKeys.timeline,
+    queryFn: () => getAllTasks(),
+    staleTime: 0,
+  });
+}
+
+// ─── C. useCreateTask ──────────────────────────────────────────────────────
+/**
+ * Creates a new task and invalidates all task queries so the
+ * upcoming-timeline view re-renders with the new entry.
+ */
+export function useCreateTask() {
   const queryClient = useQueryClient();
 
   return useMutation<void, Error, Task>({
     mutationFn: (task: Task) => createTask(task),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: taskKeys.byDate(dateStr) });
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
     },
   });
 }
 
-// ─── C. useUpdateTaskStatus ────────────────────────────────────────────────
+// ─── D. useUpdateTaskStatus ────────────────────────────────────────────────
 /**
  * Updates a task's status field (unfinished → done → skipped, etc.)
- * and invalidates the timeline so the change is reflected immediately.
+ * and invalidates all task queries so the timeline re-renders.
  */
-export function useUpdateTaskStatus(dateStr: string) {
+export function useUpdateTaskStatus() {
   const queryClient = useQueryClient();
 
-  return useMutation<void, Error, { task: Task; newStatus: Task['status'] }, { previousTasks: Task[] | undefined }>({
+  return useMutation<void, Error, { task: Task; newStatus: Task['status'] }, void>({
     mutationFn: async ({ task, newStatus }) => {
       const updatedTask: Task = {
         ...task,
@@ -61,43 +76,51 @@ export function useUpdateTaskStatus(dateStr: string) {
       await updateTask(updatedTask);
     },
 
-    // ── Optimistic update ──────────────────────────────────────────────
-    onMutate: async ({ task, newStatus }) => {
-      // Cancel any in-flight refetches so they don't overwrite our optimistic state
-      await queryClient.cancelQueries({ queryKey: taskKeys.byDate(dateStr) });
-
-      // Snapshot the current cached tasks
-      const previousTasks = queryClient.getQueryData<Task[]>(taskKeys.byDate(dateStr));
-
-      // Optimistically patch the cache
-      queryClient.setQueryData<Task[]>(taskKeys.byDate(dateStr), (old) => {
-        if (!old) return old;
-        return old.map((t) =>
-          t.id === task.id
-            ? {
-                ...t,
-                status: newStatus,
-                completed_at: newStatus === 'done' ? new Date().toISOString() : null,
-                updated_at: new Date().toISOString(),
-              }
-            : t,
-        );
-      });
-
-      // Return snapshot for rollback on error
-      return { previousTasks };
-    },
-
-    // If the mutation fails, roll back to the saved snapshot
-    onError: (_err, _vars, context) => {
-      if (context?.previousTasks) {
-        queryClient.setQueryData(taskKeys.byDate(dateStr), context.previousTasks);
-      }
-    },
-
-    // Always refetch after mutation settles to stay in sync with IndexedDB
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: taskKeys.byDate(dateStr) });
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
     },
   });
 }
+
+// ─── E. useUpdateTaskPriority ─────────────────────────────────────────────
+/**
+ * Updates a task's priority (low ↔ high).
+ */
+export function useUpdateTaskPriority() {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, Error, { task: Task; newPriority: Task['priority'] }, void>({
+    mutationFn: async ({ task, newPriority }) => {
+      const updatedTask: Task = {
+        ...task,
+        priority: newPriority,
+        updated_at: new Date().toISOString(),
+      };
+      await updateTask(updatedTask);
+    },
+
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+    },
+  });
+}
+
+// ─── F. useDeleteTask ──────────────────────────────────────────────────────
+/**
+ * Deletes a task.
+ */
+export function useDeleteTask() {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, Error, string, void>({
+    mutationFn: async (taskId: string) => {
+      const { deleteTask } = await import('@/features/todo-timeline/db/indexeddb-store');
+      await deleteTask(taskId);
+    },
+
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+    },
+  });
+}
+
